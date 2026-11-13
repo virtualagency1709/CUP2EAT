@@ -4,16 +4,50 @@ import path from 'node:path';
 import fs from 'node:fs';
 import bcrypt from 'bcryptjs';
 
-const DB_PATH = path.join(process.cwd(), 'cup2eat.db');
+let dbInstance: any = null;
 
-let dbInstance: DatabaseSync | null = null;
-
-export function getDb(): DatabaseSync {
+export function getDb(): any {
   if (!dbInstance) {
-    dbInstance = new DatabaseSync(DB_PATH);
-    dbInstance.exec('PRAGMA foreign_keys = ON;');
-    dbInstance.exec('PRAGMA journal_mode = WAL;');
-    initDatabase(dbInstance);
+    let targetPath = path.join(process.cwd(), 'cup2eat.db');
+
+    // On Vercel / AWS Lambda, the root deployment directory is read-only.
+    // Copy the database file to /tmp (which provides 512MB of writable storage)
+    if (process.env.VERCEL) {
+      const tmpPath = path.join('/tmp', 'cup2eat.db');
+      try {
+        if (!fs.existsSync(tmpPath) && fs.existsSync(targetPath)) {
+          fs.copyFileSync(targetPath, tmpPath);
+        }
+        if (fs.existsSync(tmpPath)) {
+          targetPath = tmpPath;
+        }
+      } catch (err) {
+        console.warn('Vercel tmp copy notice:', err);
+      }
+    }
+
+    try {
+      dbInstance = new DatabaseSync(targetPath);
+      try {
+        dbInstance.exec('PRAGMA foreign_keys = ON;');
+        dbInstance.exec('PRAGMA journal_mode = WAL;');
+      } catch {
+        // WAL may not be supported on all filesystems
+      }
+      try {
+        initDatabase(dbInstance);
+      } catch (e) {
+        // Tables already exist or initialized
+      }
+    } catch {
+      // If opening with write fails, fallback to read-only
+      try {
+        dbInstance = new DatabaseSync(targetPath, { readOnly: true });
+      } catch (err) {
+        console.error('Failed to open database:', err);
+        throw err;
+      }
+    }
   }
   return dbInstance;
 }
