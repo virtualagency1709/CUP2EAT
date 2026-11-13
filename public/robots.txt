@@ -1,0 +1,9 @@
+# CUP2EAT Robots.txt
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /api/
+
+Sitemap: https://cup2eat.com/sitemap.xml
+
